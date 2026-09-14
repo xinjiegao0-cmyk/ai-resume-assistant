@@ -1,69 +1,1706 @@
+import streamlit as st
+import streamlit.components.v1 as components
 import os
 import re
 import json
-from datetime import datetime
-
-import streamlit as st
+from pathlib import Path
+from collections import Counter
 from dotenv import load_dotenv
-from openai import OpenAI
-from pypdf import PdfReader
-from docx import Document
 
-
-# =========================================================
+# ============================================================
 # 基础配置
-# =========================================================
+# ============================================================
 
 load_dotenv()
 
 st.set_page_config(
-    page_title="AI 简历优化助手",
-    page_icon="📄",
-    layout="wide"
+    page_title="AI Resume Assistant",
+    page_icon="✦",
+    layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
-HISTORY_FILE = "analysis_history.json"
+BASE_DIR = Path(__file__).parent
+HISTORY_FILE = BASE_DIR / "analysis_history.json"
+
+API_KEY = os.getenv("MOONSHOT_API_KEY")
+BASE_URL = "https://api.moonshot.cn/v1"
+MODEL = "kimi-k2.6"
 
 
-# =========================================================
-# Kimi API
-# =========================================================
+# ============================================================
+# Session State
+# ============================================================
 
-client = None
+defaults = {
+    "page": "home",
+    "resume_text": "",
+    "job_text": "",
+    "analysis_result": None,
+    "optimized_resume": "",
+    "uploaded_filename": "",
+}
 
-if os.getenv("MOONSHOT_API_KEY"):
-    client = OpenAI(
-        api_key=os.getenv("MOONSHOT_API_KEY"),
-        base_url="https://api.moonshot.cn/v1"
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
+
+
+# ============================================================
+# Liquid Glass UI
+# ============================================================
+
+st.markdown(
+    """
+<style>
+
+/* =========================================================
+   全局
+   ========================================================= */
+
+html,
+body,
+[data-testid="stAppViewContainer"] {
+    background:
+        radial-gradient(
+            circle at 20% 10%,
+            rgba(80,95,180,0.10),
+            transparent 35%
+        ),
+        radial-gradient(
+            circle at 85% 80%,
+            rgba(130,70,180,0.08),
+            transparent 35%
+        ),
+        #07080c !important;
+}
+
+[data-testid="stHeader"] {
+    background: transparent !important;
+}
+
+#MainMenu {
+    visibility: hidden;
+}
+
+footer {
+    visibility: hidden;
+}
+
+* {
+    font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "SF Pro Display",
+        "SF Pro Text",
+        "Helvetica Neue",
+        Arial,
+        sans-serif;
+}
+
+.block-container {
+    max-width: 1160px;
+    padding-top: 48px;
+    padding-bottom: 100px;
+    padding-left: 35px;
+    padding-right: 110px;
+}
+
+
+/* =========================================================
+   标题
+   ========================================================= */
+
+.hero-title {
+    font-size: 46px;
+    line-height: 1.05;
+    font-weight: 720;
+    letter-spacing: -2.4px;
+    color: rgba(255,255,255,0.96);
+    margin-bottom: 10px;
+}
+
+.hero-subtitle {
+    font-size: 15px;
+    color: rgba(255,255,255,0.45);
+    margin-bottom: 35px;
+}
+
+
+/* =========================================================
+   Glass Card
+   ========================================================= */
+
+.glass-card {
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(255,255,255,0.075),
+            rgba(255,255,255,0.025)
+        );
+
+    border:
+        1px solid rgba(255,255,255,0.095);
+
+    border-radius: 24px;
+
+    padding: 25px;
+
+    backdrop-filter:
+        blur(32px)
+        saturate(150%);
+
+    -webkit-backdrop-filter:
+        blur(32px)
+        saturate(150%);
+
+    box-shadow:
+        0 20px 70px rgba(0,0,0,0.34),
+        inset 0 1px rgba(255,255,255,0.07);
+}
+
+.section-title {
+    color: rgba(255,255,255,0.93);
+    font-size: 21px;
+    font-weight: 650;
+    margin-bottom: 7px;
+}
+
+.section-subtitle {
+    color: rgba(255,255,255,0.42);
+    font-size: 13px;
+    margin-bottom: 18px;
+}
+
+
+/* =========================================================
+   输入框
+   ========================================================= */
+
+[data-baseweb="textarea"],
+[data-baseweb="input"] {
+
+    background:
+        rgba(255,255,255,0.035) !important;
+
+    border:
+        1px solid rgba(255,255,255,0.075) !important;
+
+    border-radius:
+        16px !important;
+}
+
+[data-baseweb="textarea"]:focus-within,
+[data-baseweb="input"]:focus-within {
+
+    border-color:
+        rgba(120,145,255,0.65) !important;
+
+    box-shadow:
+        0 0 0 1px rgba(120,145,255,0.18) !important;
+}
+
+textarea,
+input {
+    color:
+        rgba(255,255,255,0.92) !important;
+}
+
+
+/* =========================================================
+   普通按钮
+   ========================================================= */
+
+.stButton > button {
+
+    border:
+        1px solid rgba(255,255,255,0.10) !important;
+
+    border-radius:
+        14px !important;
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(255,255,255,0.075),
+            rgba(255,255,255,0.025)
+        ) !important;
+
+    color:
+        rgba(255,255,255,0.90) !important;
+
+    transition:
+        transform .20s ease,
+        box-shadow .20s ease,
+        border-color .20s ease !important;
+}
+
+.stButton > button:hover {
+
+    transform:
+        translateY(-1px);
+
+    border-color:
+        rgba(255,255,255,0.22) !important;
+
+    box-shadow:
+        0 8px 30px rgba(0,0,0,0.28);
+}
+
+
+/* =========================================================
+   Primary
+   ========================================================= */
+
+button[kind="primary"] {
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(105,125,255,0.85),
+            rgba(150,90,255,0.82)
+        ) !important;
+
+    border:
+        1px solid rgba(255,255,255,0.18) !important;
+
+    box-shadow:
+        0 10px 35px rgba(100,100,255,0.18),
+        inset 0 1px rgba(255,255,255,0.20);
+}
+
+
+/* =========================================================
+   数据指标
+   ========================================================= */
+
+.metric-card {
+
+    background:
+        rgba(255,255,255,0.045);
+
+    border:
+        1px solid rgba(255,255,255,0.075);
+
+    border-radius:
+        18px;
+
+    padding:
+        18px;
+}
+
+.metric-value {
+
+    font-size:
+        28px;
+
+    font-weight:
+        700;
+
+    color:
+        white;
+}
+
+.metric-label {
+
+    font-size:
+        12px;
+
+    color:
+        rgba(255,255,255,0.42);
+}
+
+
+/* =========================================================
+   分数
+   ========================================================= */
+
+.score-number {
+
+    font-size:
+        68px;
+
+    line-height:
+        1;
+
+    font-weight:
+        750;
+
+    letter-spacing:
+        -4px;
+
+    color:
+        white;
+}
+
+.score-label {
+
+    font-size:
+        13px;
+
+    color:
+        rgba(255,255,255,0.42);
+}
+
+
+/* =========================================================
+   标签
+   ========================================================= */
+
+.tag {
+
+    display:
+        inline-block;
+
+    padding:
+        6px 11px;
+
+    margin:
+        3px;
+
+    border-radius:
+        999px;
+
+    background:
+        rgba(255,255,255,0.055);
+
+    border:
+        1px solid rgba(255,255,255,0.08);
+
+    color:
+        rgba(255,255,255,0.72);
+
+    font-size:
+        12px;
+}
+
+.tag-success {
+
+    background:
+        rgba(70,220,160,0.10);
+
+    border-color:
+        rgba(70,220,160,0.20);
+}
+
+.tag-danger {
+
+    background:
+        rgba(255,90,120,0.10);
+
+    border-color:
+        rgba(255,90,120,0.20);
+}
+
+
+/* =========================================================
+   =========================================================
+   RIGHT LIQUID GLASS DOCK
+   =========================================================
+   ========================================================= */
+
+#dock-anchor {
+
+    width:
+        1px;
+
+    height:
+        1px;
+
+    display:
+        block;
+}
+
+
+/* Dock 外层 */
+div[data-testid="column"]:has(#dock-anchor) {
+
+    position:
+        fixed !important;
+
+    right:
+        22px !important;
+
+    top:
+        50% !important;
+
+    transform:
+        translateY(-50%) !important;
+
+    width:
+        60px !important;
+
+    min-width:
+        60px !important;
+
+    max-width:
+        60px !important;
+
+    flex:
+        none !important;
+
+    z-index:
+        999999 !important;
+}
+
+
+/* 去除 Streamlit 外层多余宽度 */
+div[data-testid="column"]:has(#dock-anchor)
+> div {
+
+    width:
+        60px !important;
+
+    min-width:
+        60px !important;
+
+    max-width:
+        60px !important;
+}
+
+
+/* =========================================================
+   Glass Capsule
+   ========================================================= */
+
+div[data-testid="column"]:has(#dock-anchor)
+div[data-testid="stVerticalBlock"] {
+
+    width:
+        60px !important;
+
+    min-width:
+        60px !important;
+
+    max-width:
+        60px !important;
+
+    box-sizing:
+        border-box !important;
+
+    display:
+        flex !important;
+
+    flex-direction:
+        column !important;
+
+    align-items:
+        center !important;
+
+    justify-content:
+        center !important;
+
+    gap:
+        7px !important;
+
+    padding:
+        9px !important;
+
+    margin:
+        0 !important;
+
+    border-radius:
+        30px !important;
+
+    background:
+        linear-gradient(
+            180deg,
+            rgba(30,33,43,0.94),
+            rgba(10,12,18,0.90)
+        ) !important;
+
+    border:
+        1px solid rgba(255,255,255,0.14) !important;
+
+    backdrop-filter:
+        blur(36px)
+        saturate(170%) !important;
+
+    -webkit-backdrop-filter:
+        blur(36px)
+        saturate(170%) !important;
+
+    box-shadow:
+        0 22px 60px rgba(0,0,0,0.52),
+        0 4px 20px rgba(0,0,0,0.30),
+        inset 0 1px rgba(255,255,255,0.10) !important;
+}
+
+
+/* =========================================================
+   Dock Button 外层
+   ========================================================= */
+
+div[data-testid="column"]:has(#dock-anchor)
+div[data-testid="stButton"] {
+
+    width:
+        42px !important;
+
+    min-width:
+        42px !important;
+
+    max-width:
+        42px !important;
+
+    height:
+        42px !important;
+
+    display:
+        flex !important;
+
+    align-items:
+        center !important;
+
+    justify-content:
+        center !important;
+
+    margin:
+        0 !important;
+}
+
+
+/* =========================================================
+   Dock Icon
+   ========================================================= */
+
+div[data-testid="column"]:has(#dock-anchor)
+.stButton > button {
+
+    width:
+        42px !important;
+
+    min-width:
+        42px !important;
+
+    max-width:
+        42px !important;
+
+    height:
+        42px !important;
+
+    min-height:
+        42px !important;
+
+    padding:
+        0 !important;
+
+    margin:
+        0 !important;
+
+    display:
+        flex !important;
+
+    align-items:
+        center !important;
+
+    justify-content:
+        center !important;
+
+    border-radius:
+        14px !important;
+
+    background:
+        rgba(255,255,255,0.035) !important;
+
+    border:
+        1px solid rgba(255,255,255,0.055) !important;
+
+    color:
+        rgba(255,255,255,0.86) !important;
+
+    font-size:
+        17px !important;
+
+    line-height:
+        1 !important;
+
+    transition:
+        transform .22s cubic-bezier(.2,.8,.2,1),
+        background .22s ease,
+        box-shadow .22s ease,
+        border-color .22s ease !important;
+}
+
+
+/* =========================================================
+   Dock Hover
+   ========================================================= */
+
+div[data-testid="column"]:has(#dock-anchor)
+.stButton > button:hover {
+
+    transform:
+        translateX(-3px)
+        scale(1.18) !important;
+
+    background:
+        rgba(255,255,255,0.115) !important;
+
+    color:
+        #ffffff !important;
+
+    border-color:
+        rgba(255,255,255,0.20) !important;
+
+    box-shadow:
+        0 8px 25px rgba(0,0,0,0.38),
+        0 0 22px rgba(125,145,255,0.24) !important;
+}
+
+
+/* =========================================================
+   当前页面
+   ========================================================= */
+
+div[data-testid="column"]:has(#dock-anchor)
+button[kind="primary"] {
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(115,130,255,0.52),
+            rgba(145,90,255,0.40)
+        ) !important;
+
+    color:
+        #ffffff !important;
+
+    border:
+        1px solid rgba(175,185,255,0.40) !important;
+
+    box-shadow:
+        0 0 22px rgba(120,130,255,0.22),
+        inset 0 1px rgba(255,255,255,0.17) !important;
+}
+
+
+/* =========================================================
+   分割线
+   ========================================================= */
+
+hr {
+    border-color:
+        rgba(255,255,255,0.07) !important;
+}
+
+
+/* =========================================================
+   文件上传
+   ========================================================= */
+
+[data-testid="stFileUploader"] {
+
+    border-radius:
+        18px;
+}
+
+
+/* =========================================================
+   Expander
+   ========================================================= */
+
+[data-testid="stExpander"] {
+
+    background:
+        rgba(255,255,255,0.025) !important;
+
+    border:
+        1px solid rgba(255,255,255,0.075) !important;
+
+    border-radius:
+        16px !important;
+}
+
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# 文本处理
+# ============================================================
+
+def clean_text(text):
+
+    if not text:
+        return ""
+
+    text = str(text)
+
+    text = re.sub(
+        r"\r\n?",
+        "\n",
+        text
+    )
+
+    text = re.sub(
+        r"[ \t]+",
+        " ",
+        text
+    )
+
+    return text.strip()
+
+
+def tokenize(text):
+
+    text = text.lower()
+
+    english = re.findall(
+        r"[a-zA-Z][a-zA-Z0-9+#.\-]{1,30}",
+        text
+    )
+
+    chinese = re.findall(
+        r"[\u4e00-\u9fff]{2,8}",
+        text
+    )
+
+    tokens = english + chinese
+
+    stop_words = {
+        "负责",
+        "进行",
+        "具有",
+        "相关",
+        "工作",
+        "岗位",
+        "要求",
+        "能够",
+        "以及",
+        "熟悉",
+        "了解",
+        "参与",
+        "完成",
+        "团队",
+        "能力",
+        "优先",
+        "以上",
+        "公司",
+        "项目",
+        "经验",
+    }
+
+    return [
+        x for x in tokens
+        if x not in stop_words
+        and len(x) >= 2
+    ]
+
+
+# ============================================================
+# 技能库
+# ============================================================
+
+SKILL_LIBRARY = {
+
+    "编程语言": [
+        "python",
+        "java",
+        "javascript",
+        "typescript",
+        "c++",
+        "c#",
+        "go",
+        "rust",
+        "php",
+        "kotlin",
+        "swift",
+    ],
+
+    "前端": [
+        "html",
+        "css",
+        "react",
+        "vue",
+        "next.js",
+        "webpack",
+        "vite",
+        "uniapp",
+    ],
+
+    "后端": [
+        "spring",
+        "spring boot",
+        "django",
+        "flask",
+        "fastapi",
+        "node.js",
+        "express",
+    ],
+
+    "数据库": [
+        "mysql",
+        "redis",
+        "mongodb",
+        "postgresql",
+        "sql",
+        "oracle",
+    ],
+
+    "AI": [
+        "人工智能",
+        "ai",
+        "机器学习",
+        "深度学习",
+        "大模型",
+        "llm",
+        "gpt",
+        "kimi",
+        "prompt",
+        "提示词",
+        "rag",
+        "向量数据库",
+        "langchain",
+        "agent",
+        "智能体",
+    ],
+
+    "开发工具": [
+        "git",
+        "github",
+        "docker",
+        "linux",
+        "vscode",
+        "api",
+        "restful",
+    ],
+
+    "运营": [
+        "用户运营",
+        "产品运营",
+        "内容运营",
+        "活动运营",
+        "数据运营",
+        "新媒体运营",
+        "社群运营",
+        "增长",
+        "转化",
+        "用户增长",
+        "数据分析",
+        "excel",
+    ],
+
+    "设计": [
+        "figma",
+        "photoshop",
+        "ps",
+        "ui",
+        "ux",
+        "交互设计",
+    ],
+}
+
+
+def extract_skills(text):
+
+    text_lower = text.lower()
+
+    result = {}
+
+    for category, skills in SKILL_LIBRARY.items():
+
+        found = []
+
+        for skill in skills:
+
+            if skill.lower() in text_lower:
+                found.append(skill)
+
+        if found:
+            result[category] = list(
+                dict.fromkeys(found)
+            )
+
+    return result
+
+
+# ============================================================
+# 关键词匹配算法
+# ============================================================
+
+def keyword_similarity(resume, job):
+
+    resume_tokens = tokenize(resume)
+    job_tokens = tokenize(job)
+
+    if not resume_tokens or not job_tokens:
+        return 0
+
+    resume_counter = Counter(
+        resume_tokens
+    )
+
+    job_counter = Counter(
+        job_tokens
+    )
+
+    score = 0
+    total = 0
+
+    high_value_words = {
+        "python",
+        "java",
+        "javascript",
+        "typescript",
+        "mysql",
+        "redis",
+        "git",
+        "docker",
+        "ai",
+        "大模型",
+        "机器学习",
+        "数据分析",
+        "用户运营",
+        "产品运营",
+        "内容运营",
+        "增长",
+    }
+
+    for token, count in job_counter.items():
+
+        weight = 1.0
+
+        if token in high_value_words:
+            weight = 2.2
+
+        elif len(token) >= 4:
+            weight = 1.4
+
+        total += count * weight
+
+        if token in resume_counter:
+
+            score += (
+                min(
+                    resume_counter[token],
+                    count
+                )
+                * weight
+            )
+
+    if total <= 0:
+        return 0
+
+    return min(
+        100,
+        round(
+            score / total * 100
+        )
     )
 
 
-# =========================================================
+# ============================================================
+# 技能匹配
+# ============================================================
+
+def skill_match_score(resume, job):
+
+    resume_skills = extract_skills(
+        resume
+    )
+
+    job_skills = extract_skills(
+        job
+    )
+
+    resume_all = []
+
+    job_all = []
+
+    for items in resume_skills.values():
+        resume_all.extend(items)
+
+    for items in job_skills.values():
+        job_all.extend(items)
+
+    resume_set = {
+        x.lower()
+        for x in resume_all
+    }
+
+    matched = []
+    missing = []
+
+    for skill in job_all:
+
+        if skill.lower() in resume_set:
+            matched.append(skill)
+
+        else:
+            missing.append(skill)
+
+    if job_all:
+
+        score = round(
+            len(matched)
+            /
+            len(job_all)
+            * 100
+        )
+
+    else:
+
+        score = 50
+
+    return (
+        score,
+        list(dict.fromkeys(matched)),
+        list(dict.fromkeys(missing)),
+        resume_skills,
+        job_skills,
+    )
+
+
+# ============================================================
+# 核心岗位要求识别
+# ============================================================
+
+def detect_core_requirements(job):
+
+    text = job.lower()
+
+    core_words = [
+        "必须",
+        "要求",
+        "任职要求",
+        "岗位要求",
+        "熟练",
+        "掌握",
+        "负责",
+        "需要",
+        "至少",
+        "核心",
+        "优先",
+    ]
+
+    core = []
+    bonus = []
+
+    for category, skills in SKILL_LIBRARY.items():
+
+        for skill in skills:
+
+            skill_lower = skill.lower()
+
+            if skill_lower not in text:
+                continue
+
+            index = text.find(
+                skill_lower
+            )
+
+            nearby = text[
+                max(0, index - 90):
+                min(len(text), index + 120)
+            ]
+
+            if any(
+                word in nearby
+                for word in core_words
+            ):
+
+                core.append(skill)
+
+            else:
+
+                bonus.append(skill)
+
+    return (
+        list(dict.fromkeys(core)),
+        list(dict.fromkeys(bonus)),
+    )
+
+
+# ============================================================
+# 本地算法
+# ============================================================
+
+def local_analysis(resume, job):
+
+    (
+        skill_score,
+        matched,
+        missing,
+        resume_skills,
+        job_skills,
+    ) = skill_match_score(
+        resume,
+        job
+    )
+
+    keyword_score = keyword_similarity(
+        resume,
+        job
+    )
+
+    core_requirements, bonus_requirements = (
+        detect_core_requirements(job)
+    )
+
+    matched_set = {
+        x.lower()
+        for x in matched
+    }
+
+    core_matched = sum(
+        1
+        for x in core_requirements
+        if x.lower() in matched_set
+    )
+
+    if core_requirements:
+
+        core_score = round(
+            core_matched
+            /
+            len(core_requirements)
+            * 100
+        )
+
+    else:
+
+        core_score = skill_score
+
+    completeness = min(
+        100,
+        round(
+            len(resume)
+            /
+            800
+            * 100
+        )
+    )
+
+    final_score = round(
+        skill_score * 0.40
+        +
+        core_score * 0.30
+        +
+        keyword_score * 0.20
+        +
+        completeness * 0.10
+    )
+
+    return {
+
+        "score": min(
+            100,
+            max(
+                0,
+                final_score
+            )
+        ),
+
+        "skill_score":
+            skill_score,
+
+        "core_score":
+            core_score,
+
+        "keyword_score":
+            keyword_score,
+
+        "completeness":
+            completeness,
+
+        "matched":
+            matched,
+
+        "missing":
+            missing,
+
+        "resume_skills":
+            resume_skills,
+
+        "job_skills":
+            job_skills,
+
+        "core_requirements":
+            core_requirements,
+
+        "bonus_requirements":
+            bonus_requirements,
+    }
+
+
+# ============================================================
+# Kimi API
+# ============================================================
+
+def ask_ai(prompt, temperature=0.2):
+
+    if not API_KEY:
+        return None
+
+    try:
+
+        from openai import OpenAI
+
+        client = OpenAI(
+            api_key=API_KEY,
+            base_url=BASE_URL,
+        )
+
+        response = client.chat.completions.create(
+
+            model=MODEL,
+
+            messages=[
+
+                {
+                    "role": "system",
+
+                    "content": """
+你是一名专业的互联网招聘分析助手。
+
+请严格基于用户真实提供的信息进行判断。
+
+禁止：
+- 编造实习经历
+- 编造工作经历
+- 编造项目
+- 编造学历
+- 编造技能
+- 编造数据
+- 编造成果
+
+允许：
+- 优化表达
+- 调整结构
+- 提炼关键词
+- 将已有经历用更专业的方式描述
+- 分析岗位匹配程度
+""",
+                },
+
+                {
+                    "role":
+                        "user",
+
+                    "content":
+                        prompt,
+                },
+            ],
+
+            temperature=
+                temperature,
+
+            extra_body={
+                "thinking": {
+                    "type":
+                        "disabled"
+                }
+            },
+        )
+
+        return (
+            response
+            .choices[0]
+            .message
+            .content
+        )
+
+    except Exception as e:
+
+        return (
+            "AI_ERROR:"
+            +
+            str(e)
+        )
+
+
+# ============================================================
+# JSON 提取
+# ============================================================
+
+def extract_json(text):
+
+    if not text:
+        return None
+
+    text = text.strip()
+
+    text = re.sub(
+        r"```json",
+        "",
+        text,
+        flags=re.I
+    )
+
+    text = text.replace(
+        "```",
+        ""
+    ).strip()
+
+    start = text.find("{")
+    end = text.rfind("}")
+
+    if start == -1 or end == -1:
+        return None
+
+    try:
+
+        return json.loads(
+            text[
+                start:
+                end + 1
+            ]
+        )
+
+    except Exception:
+
+        return None
+
+
+# ============================================================
+# AI 语义分析
+# ============================================================
+
+def ai_analyze(
+    resume,
+    job,
+    local
+):
+
+    prompt = f"""
+请分析下面的简历和目标岗位。
+
+【简历】
+{resume}
+
+【岗位JD】
+{job}
+
+【本地算法】
+本地综合评分：
+{local["score"]}
+
+技能匹配：
+{local["skill_score"]}
+
+核心要求：
+{local["core_score"]}
+
+关键词匹配：
+{local["keyword_score"]}
+
+已匹配技能：
+{", ".join(local["matched"])}
+
+缺失技能：
+{", ".join(local["missing"])}
+
+核心要求：
+{", ".join(local["core_requirements"])}
+
+请进行第二层语义分析。
+
+重点判断：
+
+1. 简历经历与JD职责是否真正相关
+2. 是否存在同义表达
+3. 项目经验是否可以迁移到岗位
+4. 简历中有没有隐藏能力
+5. 哪些要求是真正核心要求
+6. 哪些能力缺失
+7. 如果进入面试，最大风险是什么
+
+请严格返回以下JSON：
+
+{{
+    "semantic_score": 0,
+    "final_ai_score": 0,
+    "summary": "",
+    "strengths": [],
+    "weaknesses": [],
+    "missing_skills": [],
+    "suggestions": [],
+    "interview_risk": "",
+    "reason": ""
+}}
+
+不要输出JSON以外的内容。
+"""
+
+    result = ask_ai(
+        prompt
+    )
+
+    data = extract_json(
+        result
+    )
+
+    if not data:
+
+        return {
+
+            "semantic_score":
+                local["score"],
+
+            "final_ai_score":
+                local["score"],
+
+            "summary":
+                "AI分析暂时不可用，当前使用本地算法结果。",
+
+            "strengths": [],
+
+            "weaknesses": [],
+
+            "missing_skills":
+                local["missing"],
+
+            "suggestions": [],
+
+            "interview_risk":
+                "AI分析不可用",
+
+            "reason":
+                "",
+        }
+
+    return data
+
+
+# ============================================================
+# 混合算法
+# ============================================================
+
+def hybrid_analysis(
+    resume,
+    job
+):
+
+    local = local_analysis(
+        resume,
+        job
+    )
+
+    ai = ai_analyze(
+        resume,
+        job,
+        local
+    )
+
+    semantic_score = int(
+        ai.get(
+            "semantic_score",
+            local["score"]
+        )
+    )
+
+    ai_score = int(
+        ai.get(
+            "final_ai_score",
+            local["score"]
+        )
+    )
+
+    final_score = round(
+
+        local["score"] * 0.45
+
+        +
+
+        semantic_score * 0.35
+
+        +
+
+        ai_score * 0.20
+
+    )
+
+    final_score = min(
+        100,
+        max(
+            0,
+            final_score
+        )
+    )
+
+    return {
+        **local,
+        **ai,
+        "final_score":
+            final_score,
+    }
+
+
+# ============================================================
+# AI 简历优化
+# ============================================================
+
+def optimize_resume(
+    resume,
+    job,
+    analysis
+):
+
+    prompt = f"""
+请根据目标岗位JD优化这份简历。
+
+【原始简历】
+{resume}
+
+【目标岗位】
+{job}
+
+【分析结果】
+{json.dumps(
+    analysis,
+    ensure_ascii=False
+)}
+
+要求：
+
+1. 不能编造任何经历。
+2. 不能编造公司。
+3. 不能编造项目。
+4. 不能编造技能。
+5. 不能编造数据。
+6. 不能改变学历。
+7. 可以优化语言。
+8. 可以调整结构。
+9. 可以突出岗位相关经历。
+10. 可以自然加入JD中的关键词。
+11. 优先使用“动作 + 方法 + 结果”的表达。
+12. 没有数据时不要自行创造数据。
+13. 最终内容应该适合互联网公司招聘。
+
+只输出完整优化后的简历正文。
+不要解释。
+"""
+
+    return ask_ai(
+        prompt,
+        temperature=0.15
+    )
+
+
+# ============================================================
+# 文件读取
+# ============================================================
+
+def read_uploaded_file(
+    uploaded_file
+):
+
+    if uploaded_file is None:
+        return ""
+
+    filename = (
+        uploaded_file
+        .name
+        .lower()
+    )
+
+    try:
+
+        if filename.endswith(
+            ".txt"
+        ):
+
+            return (
+                uploaded_file
+                .read()
+                .decode(
+                    "utf-8",
+                    errors="ignore"
+                )
+            )
+
+        if filename.endswith(
+            ".pdf"
+        ):
+
+            from pypdf import PdfReader
+
+            reader = PdfReader(
+                uploaded_file
+            )
+
+            text = ""
+
+            for page in reader.pages:
+
+                text += (
+                    page.extract_text()
+                    or ""
+                )
+
+            return text
+
+        if filename.endswith(
+            ".docx"
+        ):
+
+            from docx import Document
+
+            document = Document(
+                uploaded_file
+            )
+
+            return "\n".join(
+                p.text
+                for p in document.paragraphs
+            )
+
+    except Exception as e:
+
+        st.error(
+            f"文件读取失败：{e}"
+        )
+
+    return ""
+
+
+# ============================================================
 # 历史记录
-# =========================================================
+# ============================================================
 
 def load_history():
-    if not os.path.exists(HISTORY_FILE):
+
+    if not HISTORY_FILE.exists():
         return []
 
     try:
+
         with open(
             HISTORY_FILE,
             "r",
             encoding="utf-8"
         ) as f:
+
             return json.load(f)
 
     except Exception:
+
         return []
 
 
-def save_history(history):
+def save_history(
+    item
+):
+
+    history = load_history()
+
+    history.insert(
+        0,
+        item
+    )
+
+    history = history[:30]
+
     with open(
         HISTORY_FILE,
         "w",
         encoding="utf-8"
     ) as f:
+
         json.dump(
             history,
             f,
@@ -72,995 +1709,1005 @@ def save_history(history):
         )
 
 
-# =========================================================
-# PDF 读取
-# =========================================================
-
-def read_pdf(file):
-
-    reader = PdfReader(file)
-
-    text = ""
-
-    for page in reader.pages:
-
-        page_text = page.extract_text()
-
-        if page_text:
-            text += page_text + "\n"
-
-    return text
-
-
-# =========================================================
-# Word 读取
-# =========================================================
-
-def read_docx(file):
-
-    document = Document(file)
-
-    text = ""
-
-    for paragraph in document.paragraphs:
-
-        if paragraph.text.strip():
-
-            text += paragraph.text + "\n"
-
-    return text
-
-
-# =========================================================
-# 文本清理
-# =========================================================
-
-def clean_text(text):
-
-    if not text:
-        return ""
-
-    text = re.sub(
-        r"\n{3,}",
-        "\n\n",
-        text
-    )
-
-    text = re.sub(
-        r"[ \t]{2,}",
-        " ",
-        text
-    )
-
-    return text.strip()
-
-
-# =========================================================
-# 自动识别简历 + JD + 岗位名称
-# =========================================================
-
-def auto_detect_content(text):
-
-    text = text.strip()
-
-    resume = ""
-    job = ""
-    job_title = ""
-
-    # 岗位名称
-    title_match = re.search(
-        r"【(?:岗位名称|职位名称|岗位|职位)】\s*(.*?)(?=\n|【|$)",
-        text,
-        re.S
-    )
-
-    if title_match:
-
-        job_title = title_match.group(1).strip()
-
-    # 简历
-    resume_match = re.search(
-        r"【(?:我的简历|简历|个人简历)】"
-        r"(.*?)"
-        r"(?=【(?:目标岗位|岗位 JD|JD|岗位|职位)】|$)",
-        text,
-        re.S
-    )
-
-    if resume_match:
-
-        resume = clean_text(
-            resume_match.group(1)
-        )
-
-    # JD
-    job_match = re.search(
-        r"【(?:目标岗位|岗位 JD|JD|岗位|职位)】"
-        r"(.*)$",
-        text,
-        re.S
-    )
-
-    if job_match:
-
-        job = clean_text(
-            job_match.group(1)
-        )
-
-    return resume, job, job_title
-
-
-# =========================================================
-# AI：岗位分析
-# =========================================================
-
-def analyze_resume(resume, job):
-
-    prompt = f"""
-你是一名专业的互联网招聘顾问、HR和简历优化专家。
-
-请分析用户真实简历与目标岗位 JD。
-
-第一行必须严格输出：
-
-MATCH_SCORE: 数字
-
-然后输出：
-
-SKILL_SCORE: 数字
-EXPERIENCE_SCORE: 数字
-EDUCATION_SCORE: 数字
-JOB_SCORE: 数字
-AI_SCORE: 数字
-OPERATIONS_SCORE: 数字
-
-所有分数范围为 0-100。
-
-评分含义：
-
-SKILL_SCORE = 专业技能匹配度
-EXPERIENCE_SCORE = 经历匹配度
-EDUCATION_SCORE = 学历/专业匹配度
-JOB_SCORE = 与岗位核心要求匹配度
-AI_SCORE = AI/技术能力匹配度
-OPERATIONS_SCORE = 运营能力匹配度
-
-
-然后按照以下结构输出：
-
-# 📊 综合分析
-
-解释为什么给出这个综合匹配度。
-
-# ✅ 我的优势
-
-结合用户真实简历，
-找出与岗位最匹配的能力、经历和项目。
-
-# ❌ 我的不足
-
-指出用户简历与岗位要求之间的主要差距。
-
-# 🔧 优化建议
-
-给出具体、可执行的修改建议。
-
-# 🎯 最终建议
-
-告诉用户：
-
-1. 是否值得投递
-2. 当前最大优势
-3. 当前最大短板
-4. 最应该提升的 3 件事情
-
-严格要求：
-
-- 不允许编造经历。
-- 不允许虚构数据。
-- 不允许增加用户没有的技能。
-- 必须基于用户提供的真实信息。
-- 如果用户没有相关经历，要明确指出。
-
-
-【我的简历】
-
-{resume}
-
-
-【目标岗位 JD】
-
-{job}
-"""
-
-    response = client.chat.completions.create(
-
-        model="kimi-k2.6",
-
-        messages=[
-            {
-                "role": "system",
-                "content": "你是一名专业的互联网招聘顾问。"
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-
-        extra_body={
-            "thinking": {
-                "type": "disabled"
-            }
-        }
-    )
-
-    return response.choices[0].message.content
-
-
-# =========================================================
-# AI：优化简历
-# =========================================================
-
-def optimize_resume(resume, job):
-
-    prompt = f"""
-你是一名专业的互联网招聘顾问和简历优化专家。
-
-请根据用户真实简历和目标岗位 JD，
-重新组织一份更适合该岗位的简历。
-
-必须严格遵守：
-
-1. 不允许编造经历。
-2. 不允许虚构数据。
-3. 不允许增加不存在的技能。
-4. 只能优化表达方式、结构和重点。
-5. 突出与目标岗位相关的真实经历。
-6. 如果某项经历不存在，不要强行添加。
-
-
-请输出：
-
-# ✨ 优化后的简历
-
-## 个人简介
-
-## 教育经历
-
-## 专业技能
-
-## 项目经历
-
-## 实习/实践经历
-
-## 校园经历
-
-## 其他信息
-
-
-要求：
-
-- 表达专业。
-- 简洁清晰。
-- 尽量使用“做了什么 + 怎么做 + 结果”的表达方式。
-- 不能虚构结果。
-- 不能夸大经历。
-
-
-【原始简历】
-
-{resume}
-
-
-【目标岗位 JD】
-
-{job}
-"""
-
-    response = client.chat.completions.create(
-
-        model="kimi-k2.6",
-
-        messages=[
-            {
-                "role": "system",
-                "content": "你是一名专业的互联网简历优化专家。"
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-
-        extra_body={
-            "thinking": {
-                "type": "disabled"
-            }
-        }
-    )
-
-    return response.choices[0].message.content
-
-
-# =========================================================
-# 页面标题
-# =========================================================
-
-st.title("📄 AI 简历优化助手")
-
-st.caption(
-    "分析简历与目标岗位匹配度，并生成针对性的优化建议"
-)
-
-st.divider()
-
-
-# =========================================================
-# Session State 初始化
-# =========================================================
-
-if "resume_text" not in st.session_state:
-    st.session_state.resume_text = ""
-
-if "job_text" not in st.session_state:
-    st.session_state.job_text = ""
-
-if "job_title" not in st.session_state:
-    st.session_state.job_title = ""
-
-if "analysis_result" not in st.session_state:
-    st.session_state.analysis_result = ""
-
-if "clean_result" not in st.session_state:
-    st.session_state.clean_result = ""
-
-if "score" not in st.session_state:
-    st.session_state.score = None
-
-if "dimensions" not in st.session_state:
-    st.session_state.dimensions = {}
-
-if "optimized_resume" not in st.session_state:
-    st.session_state.optimized_resume = ""
-
-if "auto_text" not in st.session_state:
-    st.session_state.auto_text = ""
-
-
-# =========================================================
-# 侧边栏
-# =========================================================
-
-history = load_history()
-
-with st.sidebar:
-
-    st.header("🗂️ 历史记录")
-
-    if not history:
-
-        st.caption("暂无分析记录")
-
-    else:
-
-        st.caption(
-            f"共 {len(history)} 条分析记录"
-        )
-
-        for item in reversed(history):
-
-            title = item.get(
-                "job_title",
-                "未命名岗位"
-            )
-
-            score = item.get(
-                "score",
-                "--"
-            )
-
-            time = item.get(
-                "time",
-                ""
-            )
-
-            st.write(
-                f"**{title}** · {score}分"
-            )
-
-            st.caption(time)
-
-
-# =========================================================
-# 一键识别区域
-# =========================================================
-
-st.subheader("🧠 一键识别并自动填充")
-
-st.caption(
-    "一次性粘贴简历、岗位名称和 JD，AI 简历助手会自动识别并填入对应区域。"
-)
-
-auto_text = st.text_area(
-    "粘贴信息",
-    height=180,
-    placeholder="""例如：
-
-【岗位名称】
-产品运营实习生
-
-【我的简历】
-姓名：高新杰
-专业：计算机应用
-……
-
-【目标岗位】
-岗位职责：
-……
-任职要求：
-……
-""",
-    key="auto_text"
-)
-
-
-if st.button(
-    "🧠 自动识别并填充",
-    use_container_width=True
+# ============================================================
+# 一键复制
+# ============================================================
+
+def copy_button(
+    text,
+    label="一键复制"
 ):
 
-    if not auto_text.strip():
-
-        st.warning(
-            "⚠️ 请先粘贴需要识别的信息"
-        )
-
-    else:
-
-        detected_resume, detected_job, detected_title = (
-            auto_detect_content(auto_text)
-        )
-
-        if detected_resume:
-
-            st.session_state.resume_text = (
-                detected_resume
-            )
-
-        if detected_job:
-
-            st.session_state.job_text = (
-                detected_job
-            )
-
-        if detected_title:
-
-            st.session_state.job_title = (
-                detected_title
-            )
-
-        if (
-            detected_resume
-            or detected_job
-            or detected_title
-        ):
-
-            st.success(
-                "✅ 已自动识别并填充成功！"
-            )
-
-            st.rerun()
-
-        else:
-
-            st.warning(
-                "⚠️ 没有识别到内容，请检查格式。"
-            )
-
-
-st.divider()
-
-
-# =========================================================
-# 输入区域
-# =========================================================
-
-col1, col2 = st.columns(2)
-
-
-# =========================================================
-# 简历
-# =========================================================
-
-with col1:
-
-    st.subheader("📋 我的简历")
-
-    uploaded_file = st.file_uploader(
-        "上传 PDF / Word 简历",
-        type=["pdf", "docx"]
+    safe_text = json.dumps(
+        text,
+        ensure_ascii=False
     )
 
-    if uploaded_file:
+    html = f"""
+    <button
+        onclick="navigator.clipboard.writeText({safe_text})"
+        style="
+            width:100%;
+            height:42px;
+            border-radius:12px;
+            border:1px solid rgba(255,255,255,.12);
+            background:rgba(255,255,255,.06);
+            color:white;
+            cursor:pointer;
+            font-size:14px;
+        "
+    >
+        {label}
+    </button>
+    """
 
-        try:
+    components.html(
+        html,
+        height=50
+    )
 
-            if uploaded_file.name.endswith(".pdf"):
 
-                uploaded_text = read_pdf(
-                    uploaded_file
-                )
+# ============================================================
+# 页面标题
+# ============================================================
 
-            else:
+def page_header(
+    title,
+    subtitle
+):
 
-                uploaded_text = read_docx(
-                    uploaded_file
-                )
+    st.markdown(
+        f"""
+        <div class="hero-title">
+            {title}
+        </div>
 
-            uploaded_text = clean_text(
-                uploaded_text
+        <div class="hero-subtitle">
+            {subtitle}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+# ============================================================
+# Dock
+# ============================================================
+
+def render_dock():
+
+    main_col, dock_col = st.columns(
+        [1, 0.065],
+        gap="large"
+    )
+
+    with dock_col:
+
+        st.markdown(
+            '<div id="dock-anchor"></div>',
+            unsafe_allow_html=True
+        )
+
+        pages = [
+
+            (
+                "⌂",
+                "home",
+                "首页"
+            ),
+
+            (
+                "▣",
+                "resume",
+                "我的简历"
+            ),
+
+            (
+                "⌁",
+                "job",
+                "目标岗位"
+            ),
+
+            (
+                "✦",
+                "analysis",
+                "AI分析"
+            ),
+
+            (
+                "◈",
+                "optimize",
+                "优化简历"
+            ),
+
+            (
+                "◷",
+                "history",
+                "历史记录"
+            ),
+
+            (
+                "⚙",
+                "settings",
+                "设置"
+            ),
+        ]
+
+        for (
+            icon,
+            key,
+            label
+        ) in pages:
+
+            if st.button(
+
+                icon,
+
+                key:
+                    f"dock_{key}",
+
+                help:
+                    label,
+
+                type:
+                    (
+                        "primary"
+                        if
+                        st.session_state.page
+                        == key
+                        else
+                        "secondary"
+                    ),
+            ):
+
+                st.session_state.page = key
+
+                st.rerun()
+
+    return main_col
+
+
+# ============================================================
+# 首页
+# ============================================================
+
+def render_home():
+
+    page_header(
+        "AI Resume Assistant",
+        "让简历和岗位真正匹配。"
+    )
+
+    c1, c2, c3 = st.columns(3)
+
+    cards = [
+        (
+            "01",
+            "简历解析"
+        ),
+        (
+            "02",
+            "岗位匹配"
+        ),
+        (
+            "03",
+            "AI优化"
+        ),
+    ]
+
+    for col, (
+        number,
+        label
+    ) in zip(
+        [c1, c2, c3],
+        cards
+    ):
+
+        with col:
+
+            st.markdown(
+                f"""
+                <div class="metric-card">
+
+                    <div class="metric-value">
+                        {number}
+                    </div>
+
+                    <div class="metric-label">
+                        {label}
+                    </div>
+
+                </div>
+                """,
+                unsafe_allow_html=True
             )
 
-            if uploaded_text:
+    st.write("")
 
-                st.session_state.resume_text = (
-                    uploaded_text
-                )
+    st.markdown(
+        """
+        <div class="glass-card">
 
-                st.success(
-                    f"✅ 已成功读取：{uploaded_file.name}"
-                )
+            <div class="section-title">
+                开始你的第一次岗位匹配
+            </div>
 
-                with st.expander(
-                    "查看提取的简历文字"
-                ):
+            <div class="section-subtitle">
+                上传简历 → 输入岗位JD → AI分析 → 优化简历
+            </div>
 
-                    st.text(
-                        uploaded_text
-                    )
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-            else:
+    st.write("")
 
-                st.warning(
-                    "⚠️ 没有读取到文字，请检查文件。"
-                )
+    if st.button(
+        "开始分析 →",
+        type="primary",
+        use_container_width=True
+    ):
 
-        except Exception as e:
+        st.session_state.page = "resume"
 
-            st.error(
-                f"❌ 文件读取失败：{e}"
+        st.rerun()
+
+
+# ============================================================
+# 简历页面
+# ============================================================
+
+def render_resume():
+
+    page_header(
+        "我的简历",
+        "上传或者直接粘贴你的简历。"
+    )
+
+    uploaded = st.file_uploader(
+        "上传简历",
+        type=[
+            "pdf",
+            "docx",
+            "txt"
+        ],
+        label_visibility="collapsed"
+    )
+
+    if uploaded:
+
+        text = read_uploaded_file(
+            uploaded
+        )
+
+        if text:
+
+            st.session_state.resume_text = text
+
+            st.session_state.uploaded_filename = (
+                uploaded.name
+            )
+
+            st.success(
+                f"已识别：{uploaded.name}"
             )
 
     resume = st.text_area(
         "简历内容",
-        height=300,
-        placeholder="也可以直接把简历粘贴到这里……",
-        key="resume_text"
+        value=
+            st.session_state.resume_text,
+        height=500,
+        placeholder="""
+请粘贴你的简历内容：
+
+教育经历
+项目经历
+技能
+实习经历
+校园经历
+获奖经历
+自我评价
+""",
     )
 
+    st.session_state.resume_text = resume
 
-# =========================================================
-# JD
-# =========================================================
+    if resume:
 
-with col2:
+        skills = extract_skills(
+            resume
+        )
 
-    st.subheader("🎯 目标岗位")
+        if skills:
 
-    job_title = st.text_input(
-        "岗位名称",
-        placeholder="例如：产品运营实习生",
-        key="job_title"
+            st.markdown(
+                "### 已识别技能"
+            )
+
+            for category, items in skills.items():
+
+                tags = "".join(
+                    f'<span class="tag">{x}</span>'
+                    for x in items
+                )
+
+                st.markdown(
+                    f"""
+                    <div style="margin-bottom:10px">
+
+                        <b style="color:white">
+                            {category}
+                        </b>
+
+                        <br>
+
+                        {tags}
+
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+
+# ============================================================
+# JD 页面
+# ============================================================
+
+def render_job():
+
+    page_header(
+        "目标岗位",
+        "复制你真正想申请的岗位JD。"
     )
 
     job = st.text_area(
-        "岗位 JD",
-        height=300,
-        placeholder="把招聘岗位职责和任职要求粘贴到这里……",
-        key="job_text"
+        "岗位JD",
+        value=
+            st.session_state.job_text,
+        height=500,
+        placeholder="""
+把Boss直聘、字节、腾讯、美团等岗位JD复制到这里。
+""",
     )
 
+    st.session_state.job_text = job
 
-st.divider()
+    if job:
 
-
-# =========================================================
-# 第一步：分析
-# =========================================================
-
-st.subheader("🚀 第一步：岗位匹配分析")
-
-analyze_button = st.button(
-    "开始智能分析",
-    use_container_width=True
-)
-
-
-if analyze_button:
-
-    if not resume.strip():
-
-        st.warning(
-            "⚠️ 请先上传或粘贴简历。"
+        skills = extract_skills(
+            job
         )
 
-    elif not job.strip():
+        if skills:
 
-        st.warning(
-            "⚠️ 请先填写岗位 JD。"
+            st.markdown(
+                "### 岗位技能画像"
+            )
+
+            for category, items in skills.items():
+
+                tags = "".join(
+                    f'<span class="tag">{x}</span>'
+                    for x in items
+                )
+
+                st.markdown(
+                    f"""
+                    <div style="margin-bottom:10px">
+
+                        <b style="color:white">
+                            {category}
+                        </b>
+
+                        <br>
+
+                        {tags}
+
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+    st.write("")
+
+    if st.button(
+        "开始 AI 分析",
+        type="primary",
+        use_container_width=True
+    ):
+
+        if not st.session_state.resume_text:
+
+            st.error(
+                "请先填写简历。"
+            )
+
+            return
+
+        if not st.session_state.job_text:
+
+            st.error(
+                "请先填写岗位JD。"
+            )
+
+            return
+
+        with st.spinner(
+            "正在进行本地算法 + AI语义分析..."
+        ):
+
+            result = hybrid_analysis(
+
+                st.session_state.resume_text,
+
+                st.session_state.job_text,
+            )
+
+        st.session_state.analysis_result = result
+
+        save_history(
+            {
+                "resume":
+                    st.session_state.resume_text,
+
+                "job":
+                    st.session_state.job_text,
+
+                "score":
+                    result["final_score"],
+
+                "analysis":
+                    result,
+            }
         )
 
-    elif not client:
+        st.session_state.page = "analysis"
 
-        st.error(
-            "❌ 没有检测到 Kimi API Key，请检查 .env 文件。"
+        st.rerun()
+
+
+# ============================================================
+# 分析页面
+# ============================================================
+
+def render_analysis():
+
+    page_header(
+        "AI 分析",
+        "本地算法 + 大模型语义理解。"
+    )
+
+    result = (
+        st.session_state.analysis_result
+    )
+
+    if not result:
+
+        st.info(
+            "还没有分析结果。"
+        )
+
+        if st.button(
+            "去分析 →",
+            type="primary"
+        ):
+
+            st.session_state.page = "job"
+
+            st.rerun()
+
+        return
+
+    score = result[
+        "final_score"
+    ]
+
+    st.markdown(
+        f"""
+        <div class="glass-card">
+
+            <div class="score-label">
+                综合岗位匹配度
+            </div>
+
+            <div class="score-number">
+                {score}
+            </div>
+
+            <div class="score-label">
+                / 100
+            </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.write("")
+
+    cols = st.columns(4)
+
+    metrics = [
+
+        (
+            "技能匹配",
+            result["skill_score"]
+        ),
+
+        (
+            "核心要求",
+            result["core_score"]
+        ),
+
+        (
+            "关键词",
+            result["keyword_score"]
+        ),
+
+        (
+            "AI语义",
+            result.get(
+                "semantic_score",
+                0
+            )
+        ),
+    ]
+
+    for col, (
+        label,
+        value
+    ) in zip(
+        cols,
+        metrics
+    ):
+
+        with col:
+
+            st.markdown(
+                f"""
+                <div class="metric-card">
+
+                    <div class="metric-value">
+                        {value}
+                    </div>
+
+                    <div class="metric-label">
+                        {label}
+                    </div>
+
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+    st.write("")
+
+    # 匹配技能
+
+    st.markdown(
+        "### ✓ 已匹配技能"
+    )
+
+    matched = result.get(
+        "matched",
+        []
+    )
+
+    if matched:
+
+        tags = "".join(
+            f'<span class="tag tag-success">{x}</span>'
+            for x in matched
+        )
+
+        st.markdown(
+            tags,
+            unsafe_allow_html=True
         )
 
     else:
 
-        with st.spinner(
-            "🤖 AI 正在分析，请稍候……"
-        ):
+        st.caption(
+            "暂未识别到明显匹配技能。"
+        )
 
-            try:
+    # 缺失技能
 
-                result = analyze_resume(
-                    resume,
-                    job
-                )
-
-                st.session_state.analysis_result = (
-                    result
-                )
-
-                # -----------------------------------------
-                # 综合评分
-                # -----------------------------------------
-
-                score_match = re.search(
-                    r"MATCH_SCORE:\s*(\d+)",
-                    result
-                )
-
-                score = None
-
-                if score_match:
-
-                    score = min(
-                        100,
-                        max(
-                            0,
-                            int(
-                                score_match.group(1)
-                            )
-                        )
-                    )
-
-                st.session_state.score = score
-
-                # -----------------------------------------
-                # 多维度评分
-                # -----------------------------------------
-
-                dimensions = {}
-
-                score_patterns = {
-
-                    "技能匹配": "SKILL_SCORE",
-
-                    "经历匹配": "EXPERIENCE_SCORE",
-
-                    "学历匹配": "EDUCATION_SCORE",
-
-                    "岗位匹配": "JOB_SCORE",
-
-                    "AI能力": "AI_SCORE",
-
-                    "运营能力": "OPERATIONS_SCORE"
-                }
-
-                for name, pattern in score_patterns.items():
-
-                    match = re.search(
-                        rf"{pattern}:\s*(\d+)",
-                        result
-                    )
-
-                    if match:
-
-                        dimensions[name] = min(
-                            100,
-                            max(
-                                0,
-                                int(
-                                    match.group(1)
-                                )
-                            )
-                        )
-
-                st.session_state.dimensions = (
-                    dimensions
-                )
-
-                # -----------------------------------------
-                # 清理内部评分
-                # -----------------------------------------
-
-                clean_result = re.sub(
-
-                    r"(MATCH_SCORE|"
-                    r"SKILL_SCORE|"
-                    r"EXPERIENCE_SCORE|"
-                    r"EDUCATION_SCORE|"
-                    r"JOB_SCORE|"
-                    r"AI_SCORE|"
-                    r"OPERATIONS_SCORE)"
-                    r":\s*\d+\s*",
-
-                    "",
-
-                    result
-                )
-
-                st.session_state.clean_result = (
-                    clean_result
-                )
-
-                # -----------------------------------------
-                # 保存历史
-                # -----------------------------------------
-
-                history = load_history()
-
-                history.append(
-                    {
-                        "job_title": (
-                            job_title
-                            if job_title
-                            else "未命名岗位"
-                        ),
-
-                        "score": score,
-
-                        "time": datetime.now().strftime(
-                            "%Y-%m-%d %H:%M"
-                        ),
-
-                        "analysis": clean_result
-                    }
-                )
-
-                save_history(history)
-
-            except Exception as e:
-
-                st.error(
-                    f"❌ AI 分析失败：{e}"
-                )
-
-
-# =========================================================
-# 显示分析结果
-# =========================================================
-
-if st.session_state.score is not None:
-
-    score = st.session_state.score
-
-    dimensions = st.session_state.dimensions
-
-    st.subheader("📊 岗位匹配度")
-
-    score_col1, score_col2 = st.columns(
-        [1, 3]
+    st.markdown(
+        "### △ 建议补强"
     )
 
-    with score_col1:
+    missing = list(
+        dict.fromkeys(
 
-        st.metric(
-            "综合匹配度",
-            f"{score} / 100"
-        )
-
-    with score_col2:
-
-        st.progress(
-            score / 100
-        )
-
-        if score >= 80:
-
-            st.success(
-                "🎉 匹配度较高，可以重点投递！"
+            result.get(
+                "missing",
+                []
             )
 
-        elif score >= 60:
+            +
 
-            st.warning(
-                "👍 有一定匹配度，优化后建议投递。"
+            result.get(
+                "missing_skills",
+                []
             )
+        )
+    )
 
-        else:
+    if missing:
 
-            st.error(
-                "⚠️ 当前匹配度较低，建议针对 JD 重点优化。"
-            )
-
-
-    # =====================================================
-    # 多维度评分
-    # =====================================================
-
-    if dimensions:
-
-        st.subheader(
-            "📈 多维度能力分析"
+        tags = "".join(
+            f'<span class="tag tag-danger">{x}</span>'
+            for x in missing
         )
 
-        score_cols = st.columns(3)
+        st.markdown(
+            tags,
+            unsafe_allow_html=True
+        )
 
-        for index, (name, value) in enumerate(
-            dimensions.items()
-        ):
+    # AI总结
 
-            with score_cols[index % 3]:
-
-                st.metric(
-                    name,
-                    f"{value} / 100"
-                )
-
-                st.progress(
-                    value / 100
-                )
-
-
-    st.divider()
-
-
-    # =====================================================
-    # AI 深度分析
-    # =====================================================
-
-    st.subheader(
-        "🤖 AI 深度分析"
+    st.markdown(
+        "### AI 招聘判断"
     )
 
     st.markdown(
-        st.session_state.clean_result
+        f"""
+        <div class="glass-card">
+            {result.get(
+                "summary",
+                "暂无分析"
+            )}
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
+    strengths = result.get(
+        "strengths",
+        []
+    )
 
-# =========================================================
-# 第二步：生成优化简历
-# =========================================================
+    if strengths:
 
-st.divider()
-
-st.subheader(
-    "✨ 第二步：生成优化简历"
-)
-
-st.caption(
-    "分析完成后再生成优化简历，可以减少不必要的 API 调用。"
-)
-
-optimize_button = st.button(
-    "✨ 一键生成优化简历",
-    use_container_width=True
-)
-
-
-if optimize_button:
-
-    if not resume.strip():
-
-        st.warning(
-            "⚠️ 请先上传或粘贴简历。"
+        st.markdown(
+            "### 你的优势"
         )
 
-    elif not job.strip():
+        for item in strengths:
 
-        st.warning(
-            "⚠️ 请先填写岗位 JD。"
+            st.markdown(
+                f"- {item}"
+            )
+
+    weaknesses = result.get(
+        "weaknesses",
+        []
+    )
+
+    if weaknesses:
+
+        st.markdown(
+            "### 你的短板"
         )
 
-    elif not client:
+        for item in weaknesses:
 
-        st.error(
-            "❌ 没有检测到 Kimi API Key。"
+            st.markdown(
+                f"- {item}"
+            )
+
+    suggestions = result.get(
+        "suggestions",
+        []
+    )
+
+    if suggestions:
+
+        st.markdown(
+            "### 优化建议"
+        )
+
+        for item in suggestions:
+
+            st.markdown(
+                f"- {item}"
+            )
+
+    st.write("")
+
+    if st.button(
+        "生成优化简历 →",
+        type="primary",
+        use_container_width=True
+    ):
+
+        st.session_state.page = "optimize"
+
+        st.rerun()
+
+
+# ============================================================
+# 优化页面
+# ============================================================
+
+def render_optimize():
+
+    page_header(
+        "优化简历",
+        "优化表达，不伪造经历。"
+    )
+
+    resume = (
+        st.session_state.resume_text
+    )
+
+    job = (
+        st.session_state.job_text
+    )
+
+    analysis = (
+        st.session_state.analysis_result
+    )
+
+    if not resume:
+
+        st.warning(
+            "请先准备简历。"
+        )
+
+        return
+
+    if not job:
+
+        st.warning(
+            "请先准备目标岗位JD。"
+        )
+
+        return
+
+    if st.button(
+        "重新生成优化简历",
+        type="primary",
+        use_container_width=True
+    ):
+
+        with st.spinner(
+            "AI正在优化简历..."
+        ):
+
+            optimized = optimize_resume(
+
+                resume,
+
+                job,
+
+                analysis or {}
+            )
+
+        if optimized:
+
+            st.session_state.optimized_resume = optimized
+
+    if st.session_state.optimized_resume:
+
+        optimized = (
+            st.session_state.optimized_resume
+        )
+
+        st.markdown(
+            "### 优化后的简历"
+        )
+
+        st.text_area(
+            "优化结果",
+            value=optimized,
+            height=650,
+            label_visibility="collapsed"
+        )
+
+        copy_button(
+            optimized,
+            "一键复制优化后的简历"
         )
 
     else:
 
-        with st.spinner(
-            "✍️ AI 正在生成优化简历……"
+        st.info(
+            "点击上方按钮生成优化版本。"
+        )
+
+
+# ============================================================
+# 历史页面
+# ============================================================
+
+def render_history():
+
+    page_header(
+        "历史记录",
+        "保存最近的岗位分析结果。"
+    )
+
+    history = load_history()
+
+    if not history:
+
+        st.info(
+            "暂时没有历史记录。"
+        )
+
+        return
+
+    for index, item in enumerate(
+        history
+    ):
+
+        score = item.get(
+            "score",
+            0
+        )
+
+        job = item.get(
+            "job",
+            ""
+        )
+
+        preview = clean_text(
+            job
+        )[:100]
+
+        with st.expander(
+            f"匹配度 {score} · {preview}"
         ):
 
-            try:
+            st.markdown(
+                f"**匹配度：{score}/100**"
+            )
 
-                optimized = optimize_resume(
-                    resume,
-                    job
+            analysis = item.get(
+                "analysis",
+                {}
+            )
+
+            st.write(
+                analysis.get(
+                    "summary",
+                    ""
+                )
+            )
+
+            if st.button(
+                "加载这次分析",
+                key=
+                    f"load_{index}"
+            ):
+
+                st.session_state.resume_text = (
+                    item.get(
+                        "resume",
+                        ""
+                    )
                 )
 
-                st.session_state.optimized_resume = (
-                    optimized
+                st.session_state.job_text = (
+                    item.get(
+                        "job",
+                        ""
+                    )
                 )
 
-            except Exception as e:
-
-                st.error(
-                    f"❌ 简历优化失败：{e}"
+                st.session_state.analysis_result = (
+                    analysis
                 )
 
+                st.session_state.page = (
+                    "analysis"
+                )
 
-# =========================================================
-# 优化后的简历
-# =========================================================
+                st.rerun()
 
-if st.session_state.optimized_resume:
 
-    st.divider()
+# ============================================================
+# 设置页面
+# ============================================================
 
-    st.subheader(
-        "📝 优化后的简历"
+def render_settings():
+
+    page_header(
+        "设置",
+        "AI Resume Assistant"
     )
 
-    st.info(
-        "以下内容根据你提供的真实经历生成，"
-        "投递前请自行核对。"
-    )
-
-    optimized_text = (
-        st.session_state.optimized_resume
-    )
-
-    st.text_area(
-        "优化结果",
-        value=optimized_text,
-        height=650,
-        key="optimized_resume_display"
-    )
-
-    # =====================================================
-    # 一键复制
-    # =====================================================
-
-    # 转成安全的 JavaScript 字符串
-    copy_data = json.dumps(
-        optimized_text,
-        ensure_ascii=False
-    )
-
-    st.html(
+    st.markdown(
         f"""
-        <button
-            onclick='
-                navigator.clipboard.writeText(
-                    {copy_data}
-                ).then(() => {{
-                    this.innerText = "✅ 已复制到剪贴板";
-                }}).catch(() => {{
-                    this.innerText = "❌ 复制失败，请手动复制";
-                }})
-            '
-            style="
-                width: 100%;
-                padding: 12px;
-                border: none;
-                border-radius: 8px;
-                cursor: pointer;
-                font-size: 16px;
-            "
-        >
-            📋 一键复制优化后的简历
-        </button>
+        <div class="glass-card">
+
+            <div class="section-title">
+                AI 模型
+            </div>
+
+            <div class="section-subtitle">
+                当前使用 Kimi API
+            </div>
+
+            <p style="color:rgba(255,255,255,.7)">
+                Model：{MODEL}
+            </p>
+
+        </div>
         """,
-        unsafe_allow_javascript=True
+        unsafe_allow_html=True
     )
 
-    st.success(
-        "🎉 简历优化完成！"
+    st.write("")
+
+    if API_KEY:
+
+        st.success(
+            "API Key 已配置"
+        )
+
+    else:
+
+        st.error(
+            "没有检测到 MOONSHOT_API_KEY"
+        )
+
+    st.write("")
+
+    if st.button(
+        "清空当前分析数据"
+    ):
+
+        st.session_state.resume_text = ""
+        st.session_state.job_text = ""
+        st.session_state.analysis_result = None
+        st.session_state.optimized_resume = ""
+
+        st.success(
+            "当前数据已清空。"
+        )
+
+
+# ============================================================
+# 主程序
+# ============================================================
+
+main_col = render_dock()
+
+with main_col:
+
+    current_page = (
+        st.session_state.page
     )
+
+    if current_page == "home":
+
+        render_home()
+
+    elif current_page == "resume":
+
+        render_resume()
+
+    elif current_page == "job":
+
+        render_job()
+
+    elif current_page == "analysis":
+
+        render_analysis()
+
+    elif current_page == "optimize":
+
+        render_optimize()
+
+    elif current_page == "history":
+
+        render_history()
+
+    elif current_page == "settings":
+
+        render_settings()
