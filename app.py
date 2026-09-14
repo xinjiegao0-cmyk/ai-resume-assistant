@@ -1843,13 +1843,13 @@ def render_dock():
 
                 icon,
 
-                key:
+                key=
                     f"dock_{key}",
 
-                help:
+                help=
                     label,
 
-                type:
+                type=
                     (
                         "primary"
                         if
