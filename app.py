@@ -1,10 +1,10 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import os
 import re
 import json
 from pathlib import Path
 from collections import Counter
+from html import escape
 from dotenv import load_dotenv
 
 # ============================================================
@@ -17,15 +17,30 @@ st.set_page_config(
     page_title="AI Resume Assistant",
     page_icon="✦",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 BASE_DIR = Path(__file__).parent
 HISTORY_FILE = BASE_DIR / "analysis_history.json"
 
-API_KEY = os.getenv("MOONSHOT_API_KEY")
 BASE_URL = "https://api.moonshot.cn/v1"
 MODEL = "kimi-k2.6"
+APP_VERSION = "V10.0"
+
+
+def get_api_key():
+    """Use a local .env during development and Streamlit secrets in Cloud."""
+    local_key = os.getenv("MOONSHOT_API_KEY")
+    if local_key:
+        return local_key
+
+    try:
+        return st.secrets.get("MOONSHOT_API_KEY", "")
+    except Exception:
+        return ""
+
+
+API_KEY = get_api_key()
 
 
 # ============================================================
@@ -50,7 +65,7 @@ for key, value in defaults.items():
 # Liquid Glass UI
 # ============================================================
 
-st.markdown(
+st.html(
     """
 <style>
 
@@ -395,288 +410,6 @@ button[kind="primary"] {
 
 
 /* =========================================================
-   =========================================================
-   RIGHT LIQUID GLASS DOCK
-   =========================================================
-   ========================================================= */
-
-#dock-anchor {
-
-    width:
-        1px;
-
-    height:
-        1px;
-
-    display:
-        block;
-}
-
-
-/* Dock 外层 */
-div[data-testid="column"]:has(#dock-anchor) {
-
-    position:
-        fixed !important;
-
-    right:
-        22px !important;
-
-    top:
-        50% !important;
-
-    transform:
-        translateY(-50%) !important;
-
-    width:
-        60px !important;
-
-    min-width:
-        60px !important;
-
-    max-width:
-        60px !important;
-
-    flex:
-        none !important;
-
-    z-index:
-        999999 !important;
-}
-
-
-/* 去除 Streamlit 外层多余宽度 */
-div[data-testid="column"]:has(#dock-anchor)
-> div {
-
-    width:
-        60px !important;
-
-    min-width:
-        60px !important;
-
-    max-width:
-        60px !important;
-}
-
-
-/* =========================================================
-   Glass Capsule
-   ========================================================= */
-
-div[data-testid="column"]:has(#dock-anchor)
-div[data-testid="stVerticalBlock"] {
-
-    width:
-        60px !important;
-
-    min-width:
-        60px !important;
-
-    max-width:
-        60px !important;
-
-    box-sizing:
-        border-box !important;
-
-    display:
-        flex !important;
-
-    flex-direction:
-        column !important;
-
-    align-items:
-        center !important;
-
-    justify-content:
-        center !important;
-
-    gap:
-        7px !important;
-
-    padding:
-        9px !important;
-
-    margin:
-        0 !important;
-
-    border-radius:
-        30px !important;
-
-    background:
-        linear-gradient(
-            180deg,
-            rgba(30,33,43,0.94),
-            rgba(10,12,18,0.90)
-        ) !important;
-
-    border:
-        1px solid rgba(255,255,255,0.14) !important;
-
-    backdrop-filter:
-        blur(36px)
-        saturate(170%) !important;
-
-    -webkit-backdrop-filter:
-        blur(36px)
-        saturate(170%) !important;
-
-    box-shadow:
-        0 22px 60px rgba(0,0,0,0.52),
-        0 4px 20px rgba(0,0,0,0.30),
-        inset 0 1px rgba(255,255,255,0.10) !important;
-}
-
-
-/* =========================================================
-   Dock Button 外层
-   ========================================================= */
-
-div[data-testid="column"]:has(#dock-anchor)
-div[data-testid="stButton"] {
-
-    width:
-        42px !important;
-
-    min-width:
-        42px !important;
-
-    max-width:
-        42px !important;
-
-    height:
-        42px !important;
-
-    display:
-        flex !important;
-
-    align-items:
-        center !important;
-
-    justify-content:
-        center !important;
-
-    margin:
-        0 !important;
-}
-
-
-/* =========================================================
-   Dock Icon
-   ========================================================= */
-
-div[data-testid="column"]:has(#dock-anchor)
-.stButton > button {
-
-    width:
-        42px !important;
-
-    min-width:
-        42px !important;
-
-    max-width:
-        42px !important;
-
-    height:
-        42px !important;
-
-    min-height:
-        42px !important;
-
-    padding:
-        0 !important;
-
-    margin:
-        0 !important;
-
-    display:
-        flex !important;
-
-    align-items:
-        center !important;
-
-    justify-content:
-        center !important;
-
-    border-radius:
-        14px !important;
-
-    background:
-        rgba(255,255,255,0.035) !important;
-
-    border:
-        1px solid rgba(255,255,255,0.055) !important;
-
-    color:
-        rgba(255,255,255,0.86) !important;
-
-    font-size:
-        17px !important;
-
-    line-height:
-        1 !important;
-
-    transition:
-        transform .22s cubic-bezier(.2,.8,.2,1),
-        background .22s ease,
-        box-shadow .22s ease,
-        border-color .22s ease !important;
-}
-
-
-/* =========================================================
-   Dock Hover
-   ========================================================= */
-
-div[data-testid="column"]:has(#dock-anchor)
-.stButton > button:hover {
-
-    transform:
-        translateX(-3px)
-        scale(1.18) !important;
-
-    background:
-        rgba(255,255,255,0.115) !important;
-
-    color:
-        #ffffff !important;
-
-    border-color:
-        rgba(255,255,255,0.20) !important;
-
-    box-shadow:
-        0 8px 25px rgba(0,0,0,0.38),
-        0 0 22px rgba(125,145,255,0.24) !important;
-}
-
-
-/* =========================================================
-   当前页面
-   ========================================================= */
-
-div[data-testid="column"]:has(#dock-anchor)
-button[kind="primary"] {
-
-    background:
-        linear-gradient(
-            145deg,
-            rgba(115,130,255,0.52),
-            rgba(145,90,255,0.40)
-        ) !important;
-
-    color:
-        #ffffff !important;
-
-    border:
-        1px solid rgba(175,185,255,0.40) !important;
-
-    box-shadow:
-        0 0 22px rgba(120,130,255,0.22),
-        inset 0 1px rgba(255,255,255,0.17) !important;
-}
-
-
-/* =========================================================
    分割线
    ========================================================= */
 
@@ -715,8 +448,9 @@ hr {
 
 </style>
 """,
-    unsafe_allow_html=True,
 )
+
+st.html(BASE_DIR / "styles.css")
 
 
 # ============================================================
@@ -1675,7 +1409,8 @@ def load_history():
             encoding="utf-8"
         ) as f:
 
-            return json.load(f)
+            history = json.load(f)
+            return history if isinstance(history, list) else []
 
     except Exception:
 
@@ -1695,18 +1430,22 @@ def save_history(
 
     history = history[:30]
 
-    with open(
-        HISTORY_FILE,
-        "w",
-        encoding="utf-8"
-    ) as f:
+    try:
+        with open(
+            HISTORY_FILE,
+            "w",
+            encoding="utf-8"
+        ) as f:
 
-        json.dump(
-            history,
-            f,
-            ensure_ascii=False,
-            indent=2
-        )
+            json.dump(
+                history,
+                f,
+                ensure_ascii=False,
+                indent=2
+            )
+    except OSError:
+        # Streamlit Cloud storage is ephemeral. The current analysis still works.
+        pass
 
 
 # ============================================================
@@ -1717,34 +1456,8 @@ def copy_button(
     text,
     label="一键复制"
 ):
-
-    safe_text = json.dumps(
-        text,
-        ensure_ascii=False
-    )
-
-    html = f"""
-    <button
-        onclick="navigator.clipboard.writeText({safe_text})"
-        style="
-            width:100%;
-            height:42px;
-            border-radius:12px;
-            border:1px solid rgba(255,255,255,.12);
-            background:rgba(255,255,255,.06);
-            color:white;
-            cursor:pointer;
-            font-size:14px;
-        "
-    >
-        {label}
-    </button>
-    """
-
-    components.html(
-        html,
-        height=50
-    )
+    st.caption(f"{label}：点击下方内容右上角的复制图标即可复制。")
+    st.code(text, language=None)
 
 
 # ============================================================
@@ -1756,7 +1469,7 @@ def page_header(
     subtitle
 ):
 
-    st.markdown(
+    st.html(
         f"""
         <div class="hero-title">
             {title}
@@ -1766,7 +1479,6 @@ def page_header(
             {subtitle}
         </div>
         """,
-        unsafe_allow_html=True
     )
 
 
@@ -1775,20 +1487,8 @@ def page_header(
 # ============================================================
 
 def render_dock():
-
-    main_col, dock_col = st.columns(
-        [1, 0.065],
-        gap="large"
-    )
-
-    with dock_col:
-
-        st.markdown(
-            '<div id="dock-anchor"></div>',
-            unsafe_allow_html=True
-        )
-
-        pages = [
+    """Render navigation with native Streamlit buttons, not injected HTML."""
+    pages = [
 
             (
                 "⌂",
@@ -1831,8 +1531,9 @@ def render_dock():
                 "settings",
                 "设置"
             ),
-        ]
+    ]
 
+    with st.sidebar:
         for (
             icon,
             key,
@@ -1864,8 +1565,6 @@ def render_dock():
 
                 st.rerun()
 
-    return main_col
-
 
 # ============================================================
 # 首页
@@ -1875,7 +1574,7 @@ def render_home():
 
     page_header(
         "AI Resume Assistant",
-        "让简历和岗位真正匹配。"
+        f"{APP_VERSION} · 让简历和岗位真正匹配。"
     )
 
     c1, c2, c3 = st.columns(3)
@@ -1905,7 +1604,7 @@ def render_home():
 
         with col:
 
-            st.markdown(
+            st.html(
                 f"""
                 <div class="metric-card">
 
@@ -1919,12 +1618,11 @@ def render_home():
 
                 </div>
                 """,
-                unsafe_allow_html=True
             )
 
     st.write("")
 
-    st.markdown(
+    st.html(
         """
         <div class="glass-card">
 
@@ -1938,7 +1636,6 @@ def render_home():
 
         </div>
         """,
-        unsafe_allow_html=True
     )
 
     st.write("")
@@ -2028,11 +1725,11 @@ def render_resume():
             for category, items in skills.items():
 
                 tags = "".join(
-                    f'<span class="tag">{x}</span>'
+                    f'<span class="tag">{escape(str(x))}</span>'
                     for x in items
                 )
 
-                st.markdown(
+                st.html(
                     f"""
                     <div style="margin-bottom:10px">
 
@@ -2046,7 +1743,6 @@ def render_resume():
 
                     </div>
                     """,
-                    unsafe_allow_html=True
                 )
 
 
@@ -2088,11 +1784,11 @@ def render_job():
             for category, items in skills.items():
 
                 tags = "".join(
-                    f'<span class="tag">{x}</span>'
+                    f'<span class="tag">{escape(str(x))}</span>'
                     for x in items
                 )
 
-                st.markdown(
+                st.html(
                     f"""
                     <div style="margin-bottom:10px">
 
@@ -2106,7 +1802,6 @@ def render_job():
 
                     </div>
                     """,
-                    unsafe_allow_html=True
                 )
 
     st.write("")
@@ -2203,7 +1898,7 @@ def render_analysis():
         "final_score"
     ]
 
-    st.markdown(
+    st.html(
         f"""
         <div class="glass-card">
 
@@ -2221,7 +1916,6 @@ def render_analysis():
 
         </div>
         """,
-        unsafe_allow_html=True
     )
 
     st.write("")
@@ -2264,7 +1958,7 @@ def render_analysis():
 
         with col:
 
-            st.markdown(
+            st.html(
                 f"""
                 <div class="metric-card">
 
@@ -2278,7 +1972,6 @@ def render_analysis():
 
                 </div>
                 """,
-                unsafe_allow_html=True
             )
 
     st.write("")
@@ -2297,14 +1990,11 @@ def render_analysis():
     if matched:
 
         tags = "".join(
-            f'<span class="tag tag-success">{x}</span>'
+            f'<span class="tag tag-success">{escape(str(x))}</span>'
             for x in matched
         )
 
-        st.markdown(
-            tags,
-            unsafe_allow_html=True
-        )
+        st.html(tags)
 
     else:
 
@@ -2338,14 +2028,11 @@ def render_analysis():
     if missing:
 
         tags = "".join(
-            f'<span class="tag tag-danger">{x}</span>'
+            f'<span class="tag tag-danger">{escape(str(x))}</span>'
             for x in missing
         )
 
-        st.markdown(
-            tags,
-            unsafe_allow_html=True
-        )
+        st.html(tags)
 
     # AI总结
 
@@ -2353,17 +2040,8 @@ def render_analysis():
         "### AI 招聘判断"
     )
 
-    st.markdown(
-        f"""
-        <div class="glass-card">
-            {result.get(
-                "summary",
-                "暂无分析"
-            )}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    with st.container(border=True):
+        st.write(result.get("summary", "暂无分析"))
 
     strengths = result.get(
         "strengths",
@@ -2501,13 +2179,6 @@ def render_optimize():
             "### 优化后的简历"
         )
 
-        st.text_area(
-            "优化结果",
-            value=optimized,
-            height=650,
-            label_visibility="collapsed"
-        )
-
         copy_button(
             optimized,
             "一键复制优化后的简历"
@@ -2541,9 +2212,10 @@ def render_history():
 
         return
 
-    for index, item in enumerate(
-        history
-    ):
+    for index, item in enumerate(history):
+
+        if not isinstance(item, dict):
+            continue
 
         score = item.get(
             "score",
@@ -2567,10 +2239,10 @@ def render_history():
                 f"**匹配度：{score}/100**"
             )
 
-            analysis = item.get(
-                "analysis",
-                {}
-            )
+            analysis = item.get("analysis", {})
+            if not isinstance(analysis, dict):
+                analysis = {}
+                st.caption("这条旧记录缺少可加载的分析详情。")
 
             st.write(
                 analysis.get(
@@ -2579,7 +2251,7 @@ def render_history():
                 )
             )
 
-            if st.button(
+            if analysis and st.button(
                 "加载这次分析",
                 key=
                     f"load_{index}"
@@ -2618,10 +2290,10 @@ def render_settings():
 
     page_header(
         "设置",
-        "AI Resume Assistant"
+        f"AI Resume Assistant · {APP_VERSION}"
     )
 
-    st.markdown(
+    st.html(
         f"""
         <div class="glass-card">
 
@@ -2639,7 +2311,6 @@ def render_settings():
 
         </div>
         """,
-        unsafe_allow_html=True
     )
 
     st.write("")
@@ -2676,38 +2347,24 @@ def render_settings():
 # 主程序
 # ============================================================
 
-main_col = render_dock()
+render_dock()
 
-with main_col:
+current_page = st.session_state.page
 
-    current_page = (
-        st.session_state.page
-    )
-
-    if current_page == "home":
-
-        render_home()
-
-    elif current_page == "resume":
-
-        render_resume()
-
-    elif current_page == "job":
-
-        render_job()
-
-    elif current_page == "analysis":
-
-        render_analysis()
-
-    elif current_page == "optimize":
-
-        render_optimize()
-
-    elif current_page == "history":
-
-        render_history()
-
-    elif current_page == "settings":
-
-        render_settings()
+if current_page == "home":
+    render_home()
+elif current_page == "resume":
+    render_resume()
+elif current_page == "job":
+    render_job()
+elif current_page == "analysis":
+    render_analysis()
+elif current_page == "optimize":
+    render_optimize()
+elif current_page == "history":
+    render_history()
+elif current_page == "settings":
+    render_settings()
+else:
+    st.session_state.page = "home"
+    st.rerun()

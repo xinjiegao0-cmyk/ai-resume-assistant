@@ -1,0 +1,118 @@
+/* V10.0: native sidebar used as a compact, fixed Liquid Glass dock. */
+
+[data-testid="stSidebar"] {
+    position: fixed !important;
+    top: 50% !important;
+    right: 22px !important;
+    bottom: auto !important;
+    left: auto !important;
+    width: 72px !important;
+    min-width: 72px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    transform: translateY(-50%) !important;
+    overflow: visible !important;
+    background: linear-gradient(180deg, rgba(31, 35, 47, 0.94), rgba(10, 12, 18, 0.92)) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    border-radius: 36px !important;
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.52), inset 0 1px rgba(255, 255, 255, 0.12) !important;
+    backdrop-filter: blur(36px) saturate(170%) !important;
+    -webkit-backdrop-filter: blur(36px) saturate(170%) !important;
+    z-index: 1000 !important;
+}
+
+[data-testid="stSidebar"] > div:first-child,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    background: transparent !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+    padding: 10px !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebar"] [data-testid="stSidebarHeader"] {
+    display: none !important;
+}
+
+[data-testid="stSidebar"] .stButton {
+    display: flex !important;
+    justify-content: center !important;
+    width: 50px !important;
+    margin: 0 0 7px !important;
+}
+
+[data-testid="stSidebar"] .stButton:last-child {
+    margin-bottom: 0 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 50px !important;
+    min-width: 50px !important;
+    height: 50px !important;
+    min-height: 50px !important;
+    padding: 0 !important;
+    border: 1px solid rgba(255, 255, 255, 0.07) !important;
+    border-radius: 17px !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+    font-size: 18px !important;
+    line-height: 1 !important;
+    transition: transform 0.2s cubic-bezier(.2, .8, .2, 1), background 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
+}
+
+[data-testid="stSidebar"] .stButton > button:hover {
+    transform: scale(1.16) !important;
+    background: rgba(255, 255, 255, 0.14) !important;
+    border-color: rgba(255, 255, 255, 0.23) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36), 0 0 22px rgba(125, 145, 255, 0.25) !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"] {
+    background: linear-gradient(145deg, rgba(115, 130, 255, 0.6), rgba(145, 90, 255, 0.46)) !important;
+    border-color: rgba(190, 198, 255, 0.42) !important;
+    color: #fff !important;
+    box-shadow: 0 0 24px rgba(120, 130, 255, 0.28), inset 0 1px rgba(255, 255, 255, 0.18) !important;
+}
+
+@media (max-width: 760px) {
+    .block-container {
+        padding-right: 20px !important;
+        padding-bottom: 108px !important;
+    }
+
+    [data-testid="stSidebar"] {
+        top: auto !important;
+        right: 50% !important;
+        bottom: 16px !important;
+        width: calc(100% - 28px) !important;
+        max-width: 460px !important;
+        transform: translateX(50%) !important;
+        border-radius: 28px !important;
+    }
+
+    [data-testid="stSidebar"] [data-testid="stSidebarContent"] > div {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 5px !important;
+    }
+
+    [data-testid="stSidebar"] .stButton {
+        width: auto !important;
+        margin: 0 !important;
+    }
+
+    [data-testid="stSidebar"] .stButton > button {
+        width: 42px !important;
+        min-width: 42px !important;
+        height: 42px !important;
+        min-height: 42px !important;
+        border-radius: 14px !important;
+    }
+}
